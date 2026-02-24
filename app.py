@@ -245,51 +245,23 @@ with c4:
 
 st.divider()
 
-# ── Color-coded HTML table ────────────────────────────────────────────────────
-STATUS_STYLE = {
-    "Resolved": ("background:#1a3d2b; color:#4ade80; border:1px solid #4ade80;", "🟢"),
-    "Pending":  ("background:#3d3000; color:#facc15; border:1px solid #facc15;", "🟡"),
-    "Partial":  ("background:#3d1f00; color:#fb923c; border:1px solid #fb923c;", "🟠"),
-}
+# ── Single combined editor with color indicator column ────────────────────────
+STATUS_DOT = {"Resolved": "🟢", "Pending": "🟡", "Partial": "🟠"}
 
-def build_table(df: pd.DataFrame) -> str:
-    rows_html = ""
-    for _, row in df.iterrows():
-        status = str(row["Status"])
-        style, icon = STATUS_STYLE.get(status, ("background:#333; color:#ccc; border:1px solid #666;", "⚪"))
-        badge = f'<span style="padding:3px 10px; border-radius:12px; font-size:0.78rem; font-weight:600; {style}">{icon} {status}</span>'
-        task_text = str(row["Task"]).replace("<", "&lt;").replace(">", "&gt;")
-        comment_text = str(row["Comments"]).replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
-        rows_html += f"""
-        <tr style="border-bottom:1px solid #2a2a2a;">
-            <td style="padding:10px 12px; color:#aaa; text-align:center; width:60px;">{int(row['S.No.'])}</td>
-            <td style="padding:10px 12px; color:#e8edf2;">{task_text}</td>
-            <td style="padding:10px 12px; color:#9aabb8; font-size:0.85rem;">{comment_text}</td>
-            <td style="padding:10px 12px; text-align:center; white-space:nowrap;">{badge}</td>
-        </tr>"""
-    return f"""
-    <table style="width:100%; border-collapse:collapse; background:#0e1117; border-radius:8px; overflow:hidden;">
-        <thead>
-            <tr style="background:#1a1f2e; border-bottom:2px solid #2a2a2a;">
-                <th style="padding:10px 12px; color:#7a8a9a; text-align:center; width:60px;">S.No.</th>
-                <th style="padding:10px 12px; color:#7a8a9a; text-align:left;">Task</th>
-                <th style="padding:10px 12px; color:#7a8a9a; text-align:left;">Comments</th>
-                <th style="padding:10px 12px; color:#7a8a9a; text-align:center; width:140px;">Status</th>
-            </tr>
-        </thead>
-        <tbody>{rows_html}</tbody>
-    </table>"""
+def add_indicator(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    d.insert(0, "●", d["Status"].map(lambda s: STATUS_DOT.get(str(s), "⚪")))
+    return d
 
-current_df = st.session_state[state_key]
-if not current_df.empty:
-    st.markdown(build_table(current_df), unsafe_allow_html=True)
+def strip_indicator(df: pd.DataFrame) -> pd.DataFrame:
+    return df.drop(columns=["●"], errors="ignore")
 
-st.divider()
-st.markdown("**✏️ Edit tasks below, then click Save Changes:**")
+display_df = add_indicator(st.session_state[state_key])
 
-edited = st.data_editor(
-    st.session_state[state_key],
+edited_display = st.data_editor(
+    display_df,
     column_config={
+        "●":        st.column_config.TextColumn("", width=30, disabled=True),
         "S.No.":    st.column_config.NumberColumn("S.No.", width="small", disabled=True),
         "Task":     st.column_config.TextColumn("Task",     width="large"),
         "Comments": st.column_config.TextColumn("Comments", width="large"),
@@ -305,6 +277,11 @@ edited = st.data_editor(
     hide_index=True,
     key="task_editor",
 )
+
+# Strip indicator col, sync status dot with any status changes
+edited = strip_indicator(edited_display)
+edited["●_sync"] = edited["Status"].map(lambda s: STATUS_DOT.get(str(s), "⚪"))
+edited = edited.drop(columns=["●_sync"], errors="ignore")
 st.session_state[state_key] = edited
 
 # ── Row selection for deletion ────────────────────────────────────────────────
